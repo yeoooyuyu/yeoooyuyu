@@ -23,7 +23,7 @@
     position: absolute;
     border-radius: 50%;
     cursor: pointer;
-    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease;
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease, border-radius 0.4s ease;
     box-shadow: 0 4px 15px rgba(0,0,0,0.05);
     z-index: 1;
   }
@@ -31,6 +31,7 @@
     transform: scale(1.1) !important;
     z-index: 10;
     box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+    animation: ripple 1.2s ease-in-out infinite alternate !important;
   }
   .tooltip {
     position: absolute;
@@ -72,12 +73,12 @@
     color: #888;
     margin-top: 2px;
   }
-  @keyframes drift {
-    0%   { transform: translate(0, 0); }
-    25%  { transform: translate(20px, -20px); }
-    50%  { transform: translate(-15px, 30px); }
-    75%  { transform: translate(-25px, -15px); }
-    100% { transform: translate(0, 0); }
+  /* Physics handled by JS */
+  @keyframes ripple {
+    0% { border-radius: 50%; }
+    33% { border-radius: 55% 45% 58% 42% / 48% 52% 45% 55%; }
+    66% { border-radius: 46% 54% 45% 55% / 55% 45% 56% 44%; }
+    100% { border-radius: 52% 48% 55% 45% / 46% 54% 43% 57%; }
   }
 </style>
 </head>
@@ -129,20 +130,22 @@ function seededRandom(seed) {
   return x - Math.floor(x);
 }
 
+const orbDataList = [];
+
 rawData.forEach((item, idx) => {
   const orb = document.createElement('div');
   orb.className = 'orb';
 
   const normSize = Math.min(item.size_mb / 5.5, 1);
   const normBright = item.brightness_percent / 100;
-  let scale = Math.pow(normSize * 0.5 + normBright * 0.5, 1.2);
-  const finalSize = minSize + scale * (maxSize - minSize);
+  let viewScale = Math.pow(normSize * 0.5 + normBright * 0.5, 1.2);
+  const finalSize = minSize + viewScale * (maxSize - minSize);
 
-  const x = seededRandom(idx * 3) * 88;
-  const y = seededRandom(idx * 3 + 1) * 88;
+  const x = (seededRandom(idx * 3) * 88 / 100) * window.innerWidth;
+  const y = (seededRandom(idx * 3 + 1) * 88 / 100) * window.innerHeight;
   const c1 = item.colors[0], c2 = item.colors[1] || c1, c3 = item.colors[2] || c2;
 
-  orb.style.cssText = `width:${finalSize}px;height:${finalSize}px;left:${x}%;top:${y}%;background:radial-gradient(circle at 35% 35%,${c1},${c2} 60%,${c3});animation:drift ${12 + seededRandom(idx*3+2)*20}s ease-in-out infinite alternate;animation-delay:${-(seededRandom(idx)*20)}s;`;
+  orb.style.cssText = `width:${finalSize}px;height:${finalSize}px;left:${x}px;top:${y}px;background:radial-gradient(circle at 35% 35%,${c1},${c2} 60%,${c3});`;
 
   orb.innerHTML = `<div class="tooltip">
     <div class="tooltip-id">ID ${String(item.id).padStart(2,'0')} · ${item.category}</div>
@@ -151,7 +154,192 @@ rawData.forEach((item, idx) => {
   </div>`;
 
   canvas.appendChild(orb);
+
+  let angle = seededRandom(idx * 4) * Math.PI * 2;
+  let speed = 0.4 + seededRandom(idx * 5) * 0.6;
+  let orbObj = {
+    el: orb,
+    x: x,
+    y: y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    radius: finalSize / 2,
+    mass: Math.PI * Math.pow(finalSize / 2, 2),
+    baseSpeed: speed,
+    isHovered: false,
+    isDragged: false,
+    ignoreHover: false,
+    dragOffsetX: 0,
+    dragOffsetY: 0
+  };
+
+  orb.addEventListener('mouseenter', () => orbObj.isHovered = true);
+  orb.addEventListener('mouseleave', () => {
+    orbObj.isHovered = false;
+    orbObj.ignoreHover = false;
+  });
+  orb.addEventListener('mousedown', (e) => {
+    orbObj.isDragged = true;
+    orbObj.dragOffsetX = e.clientX - orbObj.x;
+    orbObj.dragOffsetY = e.clientY - orbObj.y;
+    orb.style.zIndex = 100;
+  });
+
+  orbDataList.push(orbObj);
 });
+
+window.addEventListener('mousemove', (e) => {
+  for (let orbObj of orbDataList) {
+    if (orbObj.isDragged) {
+      orbObj.x = e.clientX - orbObj.dragOffsetX;
+      orbObj.y = e.clientY - orbObj.dragOffsetY;
+    }
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  for (let orbObj of orbDataList) {
+    if (orbObj.isDragged) {
+      orbObj.isDragged = false;
+      orbObj.el.style.zIndex = '';
+      if (Math.hypot(orbObj.vx, orbObj.vy) > orbObj.baseSpeed * 2) {
+        orbObj.ignoreHover = true;
+      }
+    }
+  }
+});
+
+function updatePhysics() {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+
+  for (let i = 0; i < orbDataList.length; i++) {
+    let o = orbDataList[i];
+    let effHovered = o.isHovered && !o.ignoreHover;
+    
+    if (o.isDragged) {
+      o.vx = o.x - (o.lastFrameX === undefined ? o.x : o.lastFrameX);
+      o.vy = o.y - (o.lastFrameY === undefined ? o.y : o.lastFrameY);
+      o.lastFrameX = o.x;
+      o.lastFrameY = o.y;
+    } else {
+      o.lastFrameX = undefined;
+      o.lastFrameY = undefined;
+      
+      if (!effHovered) {
+        o.x += o.vx;
+        o.y += o.vy;
+
+        let cx = o.x + o.radius;
+        let cy = o.y + o.radius;
+
+        if (cx - o.radius < 0) { 
+          o.vx *= -1; 
+          o.x = 0; 
+        } else if (cx + o.radius > W) { 
+          o.vx *= -1; 
+          o.x = W - o.radius * 2; 
+        }
+
+        if (cy - o.radius < 0) { 
+          o.vy *= -1; 
+          o.y = 0; 
+        } else if (cy + o.radius > H) { 
+          o.vy *= -1; 
+          o.y = H - o.radius * 2; 
+        }
+
+        let speed = Math.hypot(o.vx, o.vy);
+        if (speed > 0) {
+          o.vx += (o.vx / speed) * (o.baseSpeed - speed) * 0.02;
+          o.vy += (o.vy / speed) * (o.baseSpeed - speed) * 0.02;
+        } else {
+          let angle = Math.random() * Math.PI * 2;
+          o.vx = Math.cos(angle) * o.baseSpeed;
+          o.vy = Math.sin(angle) * o.baseSpeed;
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < orbDataList.length; i++) {
+    for (let j = i + 1; j < orbDataList.length; j++) {
+      let o1 = orbDataList[i];
+      let o2 = orbDataList[j];
+
+      let c1x = o1.x + o1.radius;
+      let c1y = o1.y + o1.radius;
+      let c2x = o2.x + o2.radius;
+      let c2y = o2.y + o2.radius;
+
+      let dx = c2x - c1x;
+      let dy = c2y - c1y;
+      let dist = Math.hypot(dx, dy);
+      let minDist = o1.radius + o2.radius;
+
+      if (dist < minDist) {
+        let overlap = minDist - dist;
+        let nx = dx / dist;
+        let ny = dy / dist;
+
+        let effHovered1 = o1.isHovered && !o1.ignoreHover;
+        let effHovered2 = o2.isHovered && !o2.ignoreHover;
+        let fixed1 = o1.isDragged || effHovered1;
+        let fixed2 = o2.isDragged || effHovered2;
+
+        let invM1 = fixed1 ? 0 : 1 / o1.mass;
+        let invM2 = fixed2 ? 0 : 1 / o2.mass;
+        
+        if (invM1 === 0 && invM2 === 0) continue;
+
+        let m1Ratio = invM1 / (invM1 + invM2);
+        let m2Ratio = invM2 / (invM1 + invM2);
+
+        o1.x -= nx * overlap * m1Ratio;
+        o1.y -= ny * overlap * m1Ratio;
+        o2.x += nx * overlap * m2Ratio;
+        o2.y += ny * overlap * m2Ratio;
+
+        let v1x = (fixed1 && !o1.isDragged) ? 0 : o1.vx;
+        let v1y = (fixed1 && !o1.isDragged) ? 0 : o1.vy;
+        let v2x = (fixed2 && !o2.isDragged) ? 0 : o2.vx;
+        let v2y = (fixed2 && !o2.isDragged) ? 0 : o2.vy;
+
+        let kx = v1x - v2x;
+        let ky = v1y - v2y;
+        let velAlongNormal = kx * nx + ky * ny;
+
+        if (velAlongNormal > 0) {
+          let e = 0.3; // 30% elasticity
+          let j = (1 + e) * velAlongNormal;
+          j /= (invM1 + invM2);
+
+          let impulseX = j * nx;
+          let impulseY = j * ny;
+
+          if (!fixed1) {
+            o1.vx -= impulseX * invM1;
+            o1.vy -= impulseY * invM1;
+          }
+          if (!fixed2) {
+            o2.vx += impulseX * invM2;
+            o2.vy += impulseY * invM2;
+          }
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < orbDataList.length; i++) {
+    let o = orbDataList[i];
+    o.el.style.left = o.x + 'px';
+    o.el.style.top = o.y + 'px';
+  }
+
+  requestAnimationFrame(updatePhysics);
+}
+
+requestAnimationFrame(updatePhysics);
 </script>
 </body>
 </html>
