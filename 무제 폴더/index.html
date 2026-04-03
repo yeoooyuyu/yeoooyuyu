@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Chromatic Lens Canvas</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root { --bg-color: #f8f9fa; }
+  body, html {
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background-color: var(--bg-color);
+    font-family: 'Manrope', sans-serif;
+  }
+  .canvas {
+    position: relative;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+  }
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease, border-radius 0.4s ease;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    z-index: 1;
+  }
+  .orb:hover {
+    transform: scale(1.1) !important;
+    z-index: 10;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+    animation: ripple 1.2s ease-in-out infinite alternate !important;
+  }
+  .tooltip {
+    position: absolute;
+    bottom: 120%;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: rgba(255,255,255,0.97);
+    backdrop-filter: blur(8px);
+    padding: 8px 14px;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.10);
+    border: 1px solid rgba(0,0,0,0.05);
+    pointer-events: none;
+    opacity: 0;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+    text-align: center;
+    z-index: 100;
+  }
+  .orb:hover .tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  .tooltip-id {
+    font-size: 10px;
+    font-weight: 700;
+    color: #2142B2;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 3px;
+  }
+  .tooltip-name {
+    font-size: 12px;
+    font-weight: 500;
+    color: #333;
+  }
+  .tooltip-meta {
+    font-size: 11px;
+    color: #888;
+    margin-top: 2px;
+  }
+  /* Physics handled by JS */
+  @keyframes ripple {
+    0% { border-radius: 50%; }
+    33% { border-radius: 55% 45% 58% 42% / 48% 52% 45% 55%; }
+    66% { border-radius: 46% 54% 45% 55% / 55% 45% 56% 44%; }
+    100% { border-radius: 52% 48% 55% 45% / 46% 54% 43% 57%; }
+  }
+</style>
+</head>
+<body>
+<main class="canvas" id="canvas"></main>
+<script>
+const rawData = [
+  {"id":1,"filename":"스크린샷 2026-04-02 오전 9.09.47","size_mb":2.31,"brightness_percent":41.1,"category":"스크린샷","colors":["#545454","#bababa","#767676"]},
+  {"id":2,"filename":"휴먼시그널_여유진_웹","size_mb":1.82,"brightness_percent":69.0,"category":"작업물","colors":["#b6f7f3","#fffefd","#000000"]},
+  {"id":3,"filename":"스크린샷 2026-03-18 오후 9.50.37","size_mb":0.26,"brightness_percent":93.9,"category":"스크린샷","colors":["#f7f7f7","#ffffff","#f6f6f6"]},
+  {"id":4,"filename":"IMG_9624","size_mb":2.44,"brightness_percent":45.1,"category":"사진","colors":["#4c4748","#232226","#3a3a42"]},
+  {"id":5,"filename":"PICT0034","size_mb":0.16,"brightness_percent":55.4,"category":"사진","colors":["#c1cad0","#b7bfc6","#a29992"]},
+  {"id":6,"filename":"PICT0041","size_mb":0.12,"brightness_percent":45.5,"category":"사진","colors":["#b7b6b2","#a19f9d","#2f2f2c"]},
+  {"id":7,"filename":"PICT0068","size_mb":0.14,"brightness_percent":45.4,"category":"사진","colors":["#bfbdbb","#c8c5c1","#afaba6"]},
+  {"id":8,"filename":"무제-1_대지 1","size_mb":1.7,"brightness_percent":88.9,"category":"작업물","colors":["#ffffff","#fadfeb","#de8d92"]},
+  {"id":9,"filename":"스크린샷 2026-03-10 오후 5.32.29","size_mb":0.79,"brightness_percent":85.3,"category":"스크린샷","colors":["#86c5d2","#fffefc","#e9d8df"]},
+  {"id":10,"filename":"무제-1-03","size_mb":1.69,"brightness_percent":94.3,"category":"작업물","colors":["#ffffff","#fbe9f1","#fefcfd"]},
+  {"id":11,"filename":"무제-1-04","size_mb":1.19,"brightness_percent":96.4,"category":"작업물","colors":["#ffffff","#fefcfb","#ecdbc4"]},
+  {"id":12,"filename":"무제-1_대지 1 사본","size_mb":1.79,"brightness_percent":91.2,"category":"작업물","colors":["#ffffff","#f2f8fa","#d0ebf4"]},
+  {"id":13,"filename":"무제-1_대지 1 사본 2","size_mb":1.71,"brightness_percent":93.5,"category":"작업물","colors":["#ffffff","#cb8982","#f9e0e8"]},
+  {"id":14,"filename":"무제-2 (1)-02","size_mb":1.44,"brightness_percent":91.3,"category":"작업물","colors":["#ffffff","#dc9690","#f7b953"]},
+  {"id":15,"filename":"무제-2 (1)-03","size_mb":0.96,"brightness_percent":96.9,"category":"작업물","colors":["#ffffff","#f9f6f1","#f0e1d6"]},
+  {"id":16,"filename":"무제-2 (1)-04","size_mb":1.46,"brightness_percent":94.0,"category":"작업물","colors":["#ffffff","#e7c7ca","#daeef5"]},
+  {"id":17,"filename":"무제-2 (1)_대지 1","size_mb":1.73,"brightness_percent":89.6,"category":"작업물","colors":["#ffffff","#e685a2","#f1e6e2"]},
+  {"id":18,"filename":"무제-2","size_mb":1.51,"brightness_percent":94.4,"category":"작업물","colors":["#ffffff","#e0d2c6","#fbeeeb"]},
+  {"id":19,"filename":"스크린샷 2026-03-05 오후 3.58.42","size_mb":5.24,"brightness_percent":36.4,"category":"스크린샷","colors":["#74614f","#4b463c","#5d4b3c"]},
+  {"id":20,"filename":"스크린샷 2026-03-05 오후 4.03.44","size_mb":3.25,"brightness_percent":55.5,"category":"스크린샷","colors":["#50b09e","#3a7169","#d7a86d"]},
+  {"id":21,"filename":"1_스티커-02","size_mb":1.2,"brightness_percent":86.2,"category":"작업물","colors":["#ffffff","#e86c94","#9ed0d8"]},
+  {"id":22,"filename":"1_스티커-03","size_mb":1.1,"brightness_percent":95.2,"category":"작업물","colors":["#ffffff","#f4f1ef","#eae4e0"]},
+  {"id":23,"filename":"1_스티커_대지 1","size_mb":1.0,"brightness_percent":87.8,"category":"작업물","colors":["#ffffff","#fdf0dd","#f1b255"]},
+  {"id":24,"filename":"와이오클럽","size_mb":1.3,"brightness_percent":85.2,"category":"작업물","colors":["#ffffff","#9d8b77","#ffe5eb"]},
+  {"id":25,"filename":"금융정보 제공 동의서","size_mb":0.9,"brightness_percent":74.3,"category":"서류","colors":["#becbe3","#b9c6de","#c2cfe8"]},
+  {"id":26,"filename":"양식1","size_mb":0.8,"brightness_percent":75.2,"category":"서류","colors":["#c4d0e3","#c0cbde","#bac5d6"]},
+  {"id":27,"filename":"양식2-1","size_mb":0.7,"brightness_percent":73.9,"category":"서류","colors":["#bbc6d8","#c3cee0","#c8d3e5"]},
+  {"id":28,"filename":"양식2-2","size_mb":0.7,"brightness_percent":73.0,"category":"서류","colors":["#b7c3db","#bdcae1","#b2bed5"]},
+  {"id":29,"filename":"닷닷닷 인포_대지 1","size_mb":1.0,"brightness_percent":92.9,"category":"작업물","colors":["#ffffff","#fee6ea","#dedbcf"]},
+  {"id":30,"filename":"무제-3","size_mb":1.5,"brightness_percent":87.4,"category":"작업물","colors":["#ffffff","#f3c2d0","#fd72af"]},
+  {"id":31,"filename":"페이퍼즈_대지 1","size_mb":1.4,"brightness_percent":93.1,"category":"작업물","colors":["#ffffff","#fde6ea","#e1ddd1"]},
+  {"id":32,"filename":"스크린샷 2025-12-09 오후 8.06.55","size_mb":0.9,"brightness_percent":96.8,"category":"스크린샷","colors":["#ffffff","#f8ebe0","#f9fafd"]},
+  {"id":33,"filename":"스크린샷 2025-12-20 오후 12.46.42","size_mb":0.8,"brightness_percent":93.6,"category":"스크린샷","colors":["#ffffff","#d5edfd","#abc7db"]},
+  {"id":34,"filename":"스크린샷 2025-11-19 오후 6.49.42","size_mb":0.9,"brightness_percent":90.9,"category":"스크린샷","colors":["#ffffff","#c9c9c6","#e4e7eb"]}
+];
+
+const canvas = document.getElementById('canvas');
+const minSize = 40, maxSize = 280;
+
+function seededRandom(seed) {
+  let x = Math.sin(seed + 1) * 10000;
+  return x - Math.floor(x);
+}
+
+const orbDataList = [];
+
+rawData.forEach((item, idx) => {
+  const orb = document.createElement('div');
+  orb.className = 'orb';
+
+  const normSize = Math.min(item.size_mb / 5.5, 1);
+  const normBright = item.brightness_percent / 100;
+  let viewScale = Math.pow(normSize * 0.5 + normBright * 0.5, 1.2);
+  const finalSize = minSize + viewScale * (maxSize - minSize);
+
+  const x = (seededRandom(idx * 3) * 88 / 100) * window.innerWidth;
+  const y = (seededRandom(idx * 3 + 1) * 88 / 100) * window.innerHeight;
+  const c1 = item.colors[0], c2 = item.colors[1] || c1, c3 = item.colors[2] || c2;
+
+  orb.style.cssText = `width:${finalSize}px;height:${finalSize}px;left:${x}px;top:${y}px;background:radial-gradient(circle at 35% 35%,${c1},${c2} 60%,${c3});`;
+
+  orb.innerHTML = `<div class="tooltip">
+    <div class="tooltip-id">ID ${String(item.id).padStart(2,'0')} · ${item.category}</div>
+    <div class="tooltip-name">${item.filename}</div>
+    <div class="tooltip-meta">${item.size_mb}MB · 밝기 ${item.brightness_percent}%</div>
+  </div>`;
+
+  canvas.appendChild(orb);
+
+  let angle = seededRandom(idx * 4) * Math.PI * 2;
+  let speed = 0.4 + seededRandom(idx * 5) * 0.6;
+  let orbObj = {
+    el: orb,
+    x: x,
+    y: y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    radius: finalSize / 2,
+    mass: Math.PI * Math.pow(finalSize / 2, 2),
+    baseSpeed: speed,
+    isHovered: false,
+    isDragged: false,
+    ignoreHover: false,
+    dragOffsetX: 0,
+    dragOffsetY: 0
+  };
+
+  orb.addEventListener('mouseenter', () => orbObj.isHovered = true);
+  orb.addEventListener('mouseleave', () => {
+    orbObj.isHovered = false;
+    orbObj.ignoreHover = false;
+  });
+  orb.addEventListener('mousedown', (e) => {
+    orbObj.isDragged = true;
+    orbObj.dragOffsetX = e.clientX - orbObj.x;
+    orbObj.dragOffsetY = e.clientY - orbObj.y;
+    orb.style.zIndex = 100;
+  });
+
+  orbDataList.push(orbObj);
+});
+
+window.addEventListener('mousemove', (e) => {
+  for (let orbObj of orbDataList) {
+    if (orbObj.isDragged) {
+      orbObj.x = e.clientX - orbObj.dragOffsetX;
+      orbObj.y = e.clientY - orbObj.dragOffsetY;
+    }
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  for (let orbObj of orbDataList) {
+    if (orbObj.isDragged) {
+      orbObj.isDragged = false;
+      orbObj.el.style.zIndex = '';
+      if (Math.hypot(orbObj.vx, orbObj.vy) > orbObj.baseSpeed * 2) {
+        orbObj.ignoreHover = true;
+      }
+    }
+  }
+});
+
+function updatePhysics() {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+
+  for (let i = 0; i < orbDataList.length; i++) {
+    let o = orbDataList[i];
+    let effHovered = o.isHovered && !o.ignoreHover;
+    
+    if (o.isDragged) {
+      o.vx = o.x - (o.lastFrameX === undefined ? o.x : o.lastFrameX);
+      o.vy = o.y - (o.lastFrameY === undefined ? o.y : o.lastFrameY);
+      o.lastFrameX = o.x;
+      o.lastFrameY = o.y;
+    } else {
+      o.lastFrameX = undefined;
+      o.lastFrameY = undefined;
+      
+      if (!effHovered) {
+        o.x += o.vx;
+        o.y += o.vy;
+
+        let cx = o.x + o.radius;
+        let cy = o.y + o.radius;
+
+        if (cx - o.radius < 0) { 
+          o.vx *= -1; 
+          o.x = 0; 
+        } else if (cx + o.radius > W) { 
+          o.vx *= -1; 
+          o.x = W - o.radius * 2; 
+        }
+
+        if (cy - o.radius < 0) { 
+          o.vy *= -1; 
+          o.y = 0; 
+        } else if (cy + o.radius > H) { 
+          o.vy *= -1; 
+          o.y = H - o.radius * 2; 
+        }
+
+        let speed = Math.hypot(o.vx, o.vy);
+        if (speed > 0) {
+          o.vx += (o.vx / speed) * (o.baseSpeed - speed) * 0.02;
+          o.vy += (o.vy / speed) * (o.baseSpeed - speed) * 0.02;
+        } else {
+          let angle = Math.random() * Math.PI * 2;
+          o.vx = Math.cos(angle) * o.baseSpeed;
+          o.vy = Math.sin(angle) * o.baseSpeed;
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < orbDataList.length; i++) {
+    for (let j = i + 1; j < orbDataList.length; j++) {
+      let o1 = orbDataList[i];
+      let o2 = orbDataList[j];
+
+      let c1x = o1.x + o1.radius;
+      let c1y = o1.y + o1.radius;
+      let c2x = o2.x + o2.radius;
+      let c2y = o2.y + o2.radius;
+
+      let dx = c2x - c1x;
+      let dy = c2y - c1y;
+      let dist = Math.hypot(dx, dy);
+      let minDist = o1.radius + o2.radius;
+
+      if (dist < minDist) {
+        let overlap = minDist - dist;
+        let nx = dx / dist;
+        let ny = dy / dist;
+
+        let effHovered1 = o1.isHovered && !o1.ignoreHover;
+        let effHovered2 = o2.isHovered && !o2.ignoreHover;
+        let fixed1 = o1.isDragged || effHovered1;
+        let fixed2 = o2.isDragged || effHovered2;
+
+        let invM1 = fixed1 ? 0 : 1 / o1.mass;
+        let invM2 = fixed2 ? 0 : 1 / o2.mass;
+        
+        if (invM1 === 0 && invM2 === 0) continue;
+
+        let m1Ratio = invM1 / (invM1 + invM2);
+        let m2Ratio = invM2 / (invM1 + invM2);
+
+        o1.x -= nx * overlap * m1Ratio;
+        o1.y -= ny * overlap * m1Ratio;
+        o2.x += nx * overlap * m2Ratio;
+        o2.y += ny * overlap * m2Ratio;
+
+        let v1x = (fixed1 && !o1.isDragged) ? 0 : o1.vx;
+        let v1y = (fixed1 && !o1.isDragged) ? 0 : o1.vy;
+        let v2x = (fixed2 && !o2.isDragged) ? 0 : o2.vx;
+        let v2y = (fixed2 && !o2.isDragged) ? 0 : o2.vy;
+
+        let kx = v1x - v2x;
+        let ky = v1y - v2y;
+        let velAlongNormal = kx * nx + ky * ny;
+
+        if (velAlongNormal > 0) {
+          let e = 0.3; // 30% elasticity
+          let j = (1 + e) * velAlongNormal;
+          j /= (invM1 + invM2);
+
+          let impulseX = j * nx;
+          let impulseY = j * ny;
+
+          if (!fixed1) {
+            o1.vx -= impulseX * invM1;
+            o1.vy -= impulseY * invM1;
+          }
+          if (!fixed2) {
+            o2.vx += impulseX * invM2;
+            o2.vy += impulseY * invM2;
+          }
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < orbDataList.length; i++) {
+    let o = orbDataList[i];
+    o.el.style.left = o.x + 'px';
+    o.el.style.top = o.y + 'px';
+  }
+
+  requestAnimationFrame(updatePhysics);
+}
+
+requestAnimationFrame(updatePhysics);
+</script>
+</body>
+</html>
